@@ -1,0 +1,67 @@
+local HttpService = game:GetService("HttpService")
+
+print("Starting server script, please don't spam the execute button")
+
+local key = "your_key_here"  -- Replace with your actual key
+
+-- Base64 decoder function
+local function decodeBase64(data)
+    local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    data = string.gsub(data, '[^' .. b .. '=]', '')
+    return (data:gsub('.', function(x)
+        if x == '=' then return '' end
+        local r, f = '', (b:find(x) - 1)
+        for i = 6, 1, -1 do
+            r = r .. (f % 2^i - f % 2^(i-1) > 0 and '1' or '0')
+        end
+        return r
+    end):gsub('%d%d%d%d%d%d%d%d', function(x)
+        return string.char(tonumber(x, 2))
+    end))
+end
+
+-- Decode the key to get the IP portion
+local decodedKey = decodeBase64(key)
+local decodedIP = tonumber(decodedKey) or decodedKey
+
+-- Build the URL and perform the HTTP GET request using HttpService
+local url = "http://192.168." .. decodedIP .. ":5000/data"
+local response
+local success, err = pcall(function()
+    response = HttpService:GetAsync(url)
+end)
+
+if not success then
+    warn("HTTP request failed: " .. tostring(err))
+    return
+end
+
+print("Response:", response)
+local jsonResponse = HttpService:JSONDecode(response)
+
+if jsonResponse and jsonResponse.data and jsonResponse.grid_size and jsonResponse.block_size then
+    local pixelData = decodeBase64(jsonResponse.data)
+    -- Set the origin to (0, 0, 0)
+    local origin = Vector3.new(0, 0, 0)
+    local blockSize = jsonResponse.block_size
+    local gridSize = jsonResponse.grid_size
+    local index = 1
+
+    for y = 1, gridSize do
+        for x = 1, gridSize do
+            local r = string.byte(pixelData, index)
+            local g = string.byte(pixelData, index + 1)
+            local b = string.byte(pixelData, index + 2)
+            index = index + 3
+
+            local part = Instance.new("Part")
+            part.Size = Vector3.new(blockSize, blockSize, blockSize)
+            part.Anchored = true
+            part.Color = Color3.new(r / 255, g / 255, b / 255)
+            part.Position = origin + Vector3.new((x - gridSize / 2) * blockSize, 0, (y - gridSize / 2) * blockSize)
+            part.Parent = workspace
+        end
+    end
+else
+    warn("Failed to fetch or decode data from server.")
+end
